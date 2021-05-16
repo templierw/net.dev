@@ -402,10 +402,104 @@ These six fields are pointers to data structures specific to particular protocol
 
 #### List management
 
+`net_device` DSs are inserted into a global list and into two hash tables, using these fields:
 
-* ``:
-* ``:
-* ``:
+* `struct net_device *next`: next in the global list
+* `struct hlist_node name_hlist` & `struct hlist_node index_hlist`: link the `net_device` structure to the bucket's list of two hash tables.
+
+#### Link layer multicast
+
+* `struct dev_mc_list *mc_list`: pointer to head of this device's list of `dev_mc_list` structures
+* `int mc_count`: number of multicast addresses for this device (lenght of the list pointed by `mc_list`)
+* `int allmulti`: when nonzero, causes the device to listen to all multicast addresses. Like `promiscuity`, discussed earlier in this chapter, `allmulti` is a reference count rather than a simple Boolean. This is because multiple facilities may independently require listening to all addresses. When the variable goes from 0 to nonzero, the function `dev_set_allmulti` is called to instruct the interface to listen to all multicast addresses. The opposite happens when `allmulti` goes to 0.
+
+#### Traffic management
+
+traffic control subsystem (TCS)
+
+* `struct net_device *next_sched`: used by one of the software interrupt
+* `struct Qdisc *qdisc`
+* `struct Qdisc *qdisc_sleeping`
+* `struct Qdisc *qdisc_ingree`
+* `struct list_head qdisc_list`: these fields are used to manage the ingree and egress packet queues and access to the device from different CPUs
+
+* `spinlock_t queue_lock`
+* `spinlock_t ingress_lock`: the TCS defines a private egress queue for each network device, and thus a lock associated to it.
+  
+* `unsigned long tx_queue_len`: the length of the device's transmission queue. When TCS is present in the kernel, the value may not be used
+
+![queue_len1](img/netdev_queuelen1.png)
+![queue_len1](img/netdev_queuelen2.png)
+
+#### Feature specific
+
+* `struct divert_blk *divert`: __diverter__ is a feature that allows you to change the source and destination addresses of the incoming packet. This makes it possible to reroute traffic with specific characteristics specified by the configuration to a different interface or adifferent host. To work properly and to make sense, diverter needs other features such as bridging. The data structure pointed to by this field stores the parameters needed by the diverter feature.
+* `struct net_bridge_port *br_port`: extra information needed when the device is configured as a bridged port
+  
+* `void (*vlan_rx_register)(...)`
+* `void (*vlan_rx_add_vid)(...)`
+* `void (*vlan_rx_kill_vid)(...)`: these three function pointers are used by the VLAN code to register a device as VLAN tagging capable, add a VLAN to the device, and delete the VLAN from the device
+  
+* `int netpoll_rx`
+* `void (*poll_controller)(...)`: used by the optional Netpoll feature...
+
+#### Generic
+
+* `atomic refcnt`: reference count (if != 0, device cannot be unregistered)
+  
+* `int watchdog_timeo`
+* `struct timer_list watchdog_timer`: timer related
+  
+* `int (*poll)(...)`
+* `struct list_head_poll_list`
+* `int quota`
+* `int weight`: used by NAPI
+  
+* `const struct iw_handler_def *wireless_handlers`
+* `struct iw_public_data *wireless_data`: stuff used by wireless devices
+  
+* `struct list_head todo_list`: to handle device unregistration
+* `struct class_device class_dev`: used by new generic kernel infrastructure
+
+#### Function pointers
+
+- transmit and receive a frame
+- add or parse the link layer header on a buffer
+- change a part of the configuration
+- retrieve statistics
+- interact with a specific feature
+
+* `struct ethtool_ops *ethtool_ops`: pointer to a set of function pointers used to set or get the configuration of different device parameters
+  
+* `int (*init)(...)`
+* `void (*uinit)(...)`
+* `void (*destructor)(...)`
+* `int (*open)(...)`
+* `int (*stop)(..)`: used to initialize, clean up, destroy, enable, and disable a device. Not all of them are always used.
+  
+* `struct net_device_stats* (*get_stats)(...)`
+* `struct iw_statistics* (*get_wireless_stats)(...)`: some statistics collected by the device driver can be displayed with user-space applications such as `ifconfig` and `ip`, and others are strictly used by the kernel. These two methods are used to collect statistics. `get_stats` operates on a normal device and `get_wireless_stats` on a wireless device.
+  
+* `int (*hard_start_xmit)(...)`: transmit a frame
+  
+* `int (*hard_header)(...)`
+* `int (*rebuild_header)(...)`
+* `int (*hard_header_cache)(...)`
+* `void (*header_cache_update)(...)`
+* `int (*hard_header_parse)(...)`
+* `int (*neigh_setup)(...)`: Used by the neighboring layer
+
+* `int (*do_ioctl)(...)`: syscall to issue command to devices
+* `void (*set_multicast_list)(...)`: this method is used to ask the device driver to configure the device to listen to multicast addresses. Usually it is not called directly, but through wrappers such as `dev_mc_upload` or its lockless version, `__dev_mc_upload`. When a device cannot install a list of multi-cast addresses, it simply enables all of them.
+* `int (*set_mac_address)(...)`: changes the MAC address
+* `int (*set_config)(...)`: Configures driver parameters, such as the hardware parameters `irq`, `io_addr`, and `if_port`. Higher-layer parameters (such as protocol addresses) are handled by `do_ioctl`.
+* `int (*change_mtu)(...)`: change the MTU
+* `void (*tx_timeout)(...)`: The method invoked at the expiration of the watchdog timer, which determines whether a transmission is taking a suspiciously long time to complete. The watchdog timer is not even started unless this method is defined.
+* `int (*accept_fastpath)(...)`: fast switching (also called FASTROUTE) was a kernel feature that allowed device drivers to route incoming traffic during interrupt context using a small cache (bypassing all the software layers). Fast switching is no longer supported, starting with the 2.6.8 kernel. This method was used to test whether the fast-switching feature could be used on the device
+
+#### Files mentioned
+
+![basic_struct_files](img/basic_struct_files.png)
 
  
 
