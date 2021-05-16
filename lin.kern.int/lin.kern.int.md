@@ -137,7 +137,7 @@ struct sk_buff_head {
 
 where `qlen` represents the number of elements in the list; `lock` is to prevent simultaneous accesses. Every `sk_buff` structure contains a poitner to the single `sk_buff_head`: `list`
 
-![sk_buff_head](lin.kern.int/img/sk_buff_head.png)
+![sk_buff_head](img/sk_buff_head.png)
 
 * `struct sock *sk`: pointer to the buffer that owns this buffer.
 * `unsigned int len`: size of block of data in buffer (includes data in the main buffer and in the fragments). Its value will change as the buffer moves between the layers.
@@ -153,7 +153,7 @@ Represent boundaries of buffer and data within it:
 * `unsigned char *tail`: end data
 Manipulated when a layer prepares its activities. Layers can fill the gap between `head` and `data` with a protocol header, or the gap between `tail` and `end` with new data.
 
-![sk_buff_b](lin.kern.int/img/sk_buff_boundaries.png)
+![sk_buff_b](img/sk_buff_boundaries.png)
 
 * `void (*destructor)(...)`: function pointer can be initialized to a routine that performs some activity when the buffer is removed. When the buffer belongs to a socket, it is usually set to `sock_rfree` or `sock_wfree` (by `skb_set_owner_r` and `skb_set_owner_w`).
 
@@ -163,7 +163,7 @@ Manipulated when a layer prepares its activities. Layers can fill the gap betwee
 * `struct net_device *dev`: the network device.
 * `struct net_device *input_dev`: device the sent the packet
 * `struct net_device *real_dev`: virtual devices only
-* ![sk_buff_layer](lin.kern.int/img/sk_buff_layer.png)
+* ![sk_buff_layer](img/sk_buff_layer.png)
 * `struct dst_entry dst`: used by routing subsystem...
 * `char cb[40]`: control buffer used to store layer-specific control information. 
 * `unsigned int csum` and `unsigned char ip_summed`: checksum and associated status flag.
@@ -256,7 +256,7 @@ nodata:
 }
 EXPORT_SYMBOL(__alloc_skb);
 ```
-![sk_buff_alloc](lin.kern.int/img/sk_buff_alloc.png)
+![sk_buff_alloc](img/sk_buff_alloc.png)
 
 `(net)dev_alloc_skb` is the buffer allocation function meant for use by device drivers and expected to be executed in interrupt mode. It is simply a wrapper around `alloc_skb` that adds 16 bytes to the requested size for optimization reasons and asks for an atomic operation (`GFP_ATOMIC`) since it will be called from within an interrupt handler routine.
 
@@ -264,17 +264,17 @@ __Freeing memory: `kfree_skb` and `dev_kfree_skb`__
 
 Returns a buffer to the pool. 
 
-![sk_buff_free](lin.kern.int/img/sk_buff_free.png)
+![sk_buff_free](img/sk_buff_free.png)
 
 __Data reservation and aligment: `skb_reserve`, `skb_put`, `skb_push`, and `skb_pull`__
 
-![sk_buff_manag](lin.kern.int/img/sk_buff_manag.png)
+![sk_buff_manag](img/sk_buff_manag.png)
 
 * (a) `skb_put`, (b) `skb_push`, (c) `skb_pull`, (d) `skb_reserve`
 
-![skb_buff_reserve1](lin.kern.int/img/skb_buff_reserve1.png)
+![skb_buff_reserve1](img/skb_buff_reserve1.png)
 
-![skb_buff_reserve2](lin.kern.int/img/skb_buff_reserve2.png)
+![skb_buff_reserve2](img/skb_buff_reserve2.png)
 
 1. When TCP is asked to transmit some data, it allocates a buffer following certain criteria (TCP Maximum Segment Size (mss), support for scatter gather I/O, etc.).
 2. TCP reserves (with `skb_reserve`) enough space at the head of the buffer to hold all the headers of all layers (TCP, IP, link layer). The parameter MAX_TCP_HEADER is the sum of all headers of all levels and is calculated taking into account the worst-case scenarios: because the TCP layer does not know what type of interface will be used for the transmission, it reserves the biggest possible header foreach layer. It even accounts for the possibility of multiple IP headers (because you can have multiple IP headers when the kernel is compiled with support for IP over IP
@@ -308,12 +308,12 @@ When the same buffer needs to be processed independently by different consumers,
 
 The `sk_buff` clone is not linked to any list and has no reference to the socket owner.The field `skb->cloned` is set to 1 in both the clone and the original buffer. `skb->users` is set to 1 in the clone so that the first attempt to remove it succeeds, and the number of references (`dataref`) to the buffer containing the data is incremented (since now there is one more `sk_buff` data structure pointing to it).
 
-![sk_buff_clone](lin.kern.int/img/sk_buff_clone.png)
+![sk_buff_clone](img/sk_buff_clone.png)
 
 When a buffer is cloned, the contents of the data block cannot be modified. This means that code can access the data without any need for locking. When, however, a function needs to modify not only the contents of the `sk_buff` structure but the data too, it needs to clone the data block as well. In this case, the programmer has two options. When he knows he needs to modify only the contents of the data in the area between `skb->start` and `skb->end`, he can use `pskb_copy` to clone just that area. When
 he thinks he may need to modify the content of the fragment data blocks too, he must use `skb_copy`.
 
-![sk_buff_clone2](lin.kern.int/img/sk_buff_clone2.png)
+![sk_buff_clone2](img/sk_buff_clone2.png)
 
 #### List management functions
 
@@ -328,5 +328,86 @@ List of `sk_buff` elements = queue
 these functions must be executed atomically - thus are wrappers to a `__xxx` function with spinlock acquisition
 
 ### `net_device` structure
+
+Used for all devices/interfaces, including real or virtual ones. The structures are in a list pointed by `dev_base`.
+
+#### Identifiers
+
+* `int ifindex`: unique ID, assigned to each device when registered with a call to `dev_new_index()`
+* `int iflink`: used by (virtual) tunnel devices and identifies the real device to be used to reach the other end of the tunnel
+* `unsigned short dev_id`: used by IPv6
+
+##### Configuration
+
+Some fields can be change at runtime (`ifconfig` or `ip`)
+
+* `char name[IFNAMSIZ]`: name of the device ("eth0")
+* `unsigned long mem_start` and `unsigned long mem_start`: fields to describe the shared memory used by the device to communicate with the kernem. Accessed only within the device driver.
+* `unsigned long base_addr`: the beginning of the I/O memory mapped to the device's own memory
+* `unsigned int irq`: interrupt number used by the device to talk to the kernel (can be shared). Allocated or freed with `request_irq()` and `free_irq`.
+* `unsigned char if_port`: type of port being used for this interface.
+* `unsigned char dma`: DMA channel used by the device (if any)
+* `unsigned short flags`, `unsigned short gflags`, `unsigned short priv_flags`: represent capabilities or status (defined in `include/linux/if.h`)
+* `int features`: another bitmap of flags. Report some communication abilities (with the CPU)
+* `unsigned mtu`: MTU
+* `unsigned short type`: category
+* `unsigned short hard_header_len`: device header in octets.
+* `unsigned char broadcast[MAX_ADDR_LEN]`: link layer broadcast addr
+* `unsigned char dev_addr[MAX_ADDR_LEN]`, `unsigned char addr_len`: link layer address
+* `int promiscuity`:
+
+#### Interface types and ports
+
+Devices with more than one connector and some port selection stuff
+
+```c
+switch (dev->if_port) {
+	case IF_PORT_10BASE2:
+		writeb((readb(addr) & 0xf8) | 1, addr);
+		break;
+	case IF_PORT_10BASET:
+		writeb((readb(addr) & 0xf8), addr);            break;        
+}
+```
+
+#### Promiscuous mode
+
+See all frames that travel through a shared cable. The `promiscuity` counter informs on how many clients are using the mode. `dev_set_promiscuity()`
+
+#### Statistics
+
+`net_device` includes a pointer `priv` that is set by the driver to point to a structure storing information about the interface (*e.g.* number of RX or TX packets or number of errors).
+
+Wireless devices use a different structure (`iw_statistics`)
+
+#### Device status
+
+To control interactions with the NIC, each device driver has to maintain information (*e.g* timestamps, flags) indicating what kind of behavior the interface requires. In a symmetric multiprocessing (SMP) system, the kernel also has to make sure that concurrent accesses to the same device from different CPUs are handled correctly. 
+
+* `unsigned long state`: set of flags used by the networking queuing subsystem index in the enum `netdev_state_dev`
+* `enum {...} reg_state`: registration state of the device
+* `unsigned long trans_start`: time in jiffies when last transmission started. To reset the card in case a very loong delay.
+* `unsigned long last_rx`: time in jiffies when last packet received
+* `struct net_device *master`: protocols that regroup devices into one and elect a *master*
+* `spinlock_t xmit_lock`, `int xmit_lock_owner`: `xmit_lock` is used to serialize accesses to the driver function `hard_start_xmit`. This means that each CPU can carry out only one transmission at a time on any given device. `xmit_lock_owner` is the ID of the CPU that holds the lock. It is always 0 on single-processor systems and –1 when the lock is not taken on SMP systems. It is possible to have lockless transmissions when the device driver supports it.
+  
+* `void *atalk_ptr`
+* `void *ip_ptr`
+* `void *dn_ptr`
+* `void *ip6_ptr`
+* `void *ec_ptr`
+* `void *ax25_ptr`
+
+These six fields are pointers to data structures specific to particular protocols, each data structure containing parameters that are used privately by that protocol. `ip_ptr`, for instance, points to a data structure of type `in_device` (eventhough it is declared as `void *`) that contains different IPv4-related parameters, among them the list of IP addresses configured on the interface.
+
+#### List management
+
+
+* ``:
+* ``:
+* ``:
+
+ 
+
 
 
